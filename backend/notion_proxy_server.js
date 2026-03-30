@@ -2,8 +2,8 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
-const ROOT = __dirname;
-const HTML_PATH = path.join(ROOT, "notion_db_trend_viewer.html");
+const ROOT = path.join(__dirname, "..");
+const HTML_PATH = path.join(ROOT, "frontend/notion_db_trend_viewer.html");
 const ENV_PATH = path.join(ROOT, ".env");
 const CACHE_PATH = path.join(ROOT, "notion_mock_cache.json");
 
