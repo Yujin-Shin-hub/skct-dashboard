@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Score Trend Viewer - with Notion DB</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    :root {
+      --panel: rgba(255, 251, 244, 0.82);
+      --panel-strong: rgba(255, 251, 244, 0.95);
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: rgba(148, 163, 184, 0.28);
+      --shadow: 0 18px 48px rgba(60, 41, 20, 0.12);
+      --radius: 24px;
+      --accent: #c56b2d;
+      --accent-2: #2f6c62;
+      --accent-3: #c93f5a;
+      --accent-4: #6976d9;
+      --accent-5: #7c8c2f;
+      --accent-6: #9d5ec9;
+      --ok: #2f6c62;
+      --warn: #b45309;
+      --danger: #b91c1c;
+      --maxw: 1380px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      font-family: "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(197, 107, 45, 0.18), transparent 30%),
+        radial-gradient(circle at top right, rgba(47, 108, 98, 0.14), transparent 28%),
+        linear-gradient(180deg, #f6efe3 0%, #f5f1e9 42%, #edf3ef 100%);
+      min-height: 100vh;
+    }
+
+    .shell {
+      max-width: var(--maxw);
+      margin: 0 auto;
+      padding: 32px 20px 64px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.62);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+      border-radius: 30px;
+    }
+
+    .hero {
+      position: relative;
+      margin-bottom: 18px;
+      padding: 10px 0 16px;
+      text-align: center;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      transform: translateX(-50%);
+      width: min(1120px, 100%);
+      height: 1px;
+      background: linear-gradient(90deg, rgba(197, 107, 45, 0), rgba(197, 107, 45, 0.38), rgba(47, 108, 98, 0.3), rgba(197, 107, 45, 0));
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.45);
+      color: var(--accent-2);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 8px 0 0;
+      font-size: clamp(22px, 2.8vw, 30px);
+      line-height: 1.1;
+      letter-spacing: -0.04em;
+      animation: header-pop 1280ms cubic-bezier(.2,.8,.2,1);
+      transform-origin: center center;
+    }
+
+    .title-soft {
+      color: rgba(107, 114, 128, 0.62);
+      font-weight: 600;
+    }
+
+    @keyframes header-pop {
+      0% {
+        opacity: 0;
+        transform: scale(1.08);
+      }
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(148, 163, 184, 0.1);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .status.ok { background: rgba(47, 108, 98, 0.1); color: var(--ok); }
+    .status.warn { background: rgba(180, 83, 9, 0.1); color: var(--warn); }
+    .status.error { background: rgba(185, 28, 28, 0.1); color: var(--danger); }
+
+    .layout {
+      display: grid;
+      gap: 20px;
+      margin-top: 24px;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 20px;
+      padding: 22px;
+    }
+
+    .section + .section {
+      margin-top: 22px;
+      padding-top: 22px;
+      border-top: 1px solid var(--line);
+    }
+
+    .section-title {
+      margin: 0 0 12px;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .section-copy {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .nav-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .nav-link {
+      display: block;
+      padding: 11px 14px;
+      border-radius: 16px;
+      background: rgba(148, 163, 184, 0.1);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 700;
+      transition: 160ms ease;
+    }
+
+    .nav-link-icon {
+      display: inline-flex;
+      width: 18px;
+      margin-right: 8px;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      line-height: 1;
+      color: var(--accent-2);
+    }
+
+    .nav-link:hover {
+      transform: translateY(-1px);
+      background: rgba(148, 163, 184, 0.16);
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 11px 16px;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 800;
+      transition: 160ms ease;
+    }
+
+    button:hover { transform: translateY(-1px); }
+    .primary { background: var(--text); color: white; box-shadow: 0 10px 20px rgba(31, 41, 55, 0.14); }
+    .secondary { background: rgba(148, 163, 184, 0.12); color: var(--text); }
+
+    .chip-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .chip {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 14px;
+      background: rgba(148, 163, 184, 0.12);
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .chip.active { background: var(--text); color: white; }
+
+    .content {
+      display: grid;
+      gap: 20px;
+    }
+
+    .top-grid {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 20px;
+    }
+
+    .card {
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--radius);
+      background: var(--panel-strong);
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, rgba(44, 62, 92, 0.92), rgba(71, 95, 142, 0.72));
+      opacity: 0.88;
+    }
+
+    .card-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .card-title {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: -0.03em;
+    }
+
+    .card-note {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .inline-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .summary-stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .stat {
+      padding: 18px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.58);
+      border: 1px solid rgba(255, 255, 255, 0.8);
+    }
+
+    .stat-label { color: var(--muted); font-size: 13px; }
+    .stat-value { margin-top: 6px; font-size: 30px; font-weight: 800; letter-spacing: -0.03em; }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: flex-end;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend-item { display: inline-flex; align-items: center; gap: 8px; }
+    .legend-dot, .tooltip-swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+    .chart-frame {
+      position: relative;
+      overflow: hidden;
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.72));
+      border: 1px solid rgba(255, 255, 255, 0.85);
+    }
+
+    svg { display: block; width: 100%; height: auto; }
+    .grid { stroke: rgba(148, 163, 184, 0.22); stroke-width: 1; }
+    .avg-line { stroke: rgba(31, 41, 55, 0.4); stroke-width: 1.5; stroke-dasharray: 6 6; }
+    .axis-text { fill: #7b8490; font-size: 12px; }
+    .line { fill: none; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
+    .area { opacity: 0.12; }
+    .point, .hover-marker { stroke: white; stroke-width: 2; }
+    .hover-line { stroke: rgba(31, 41, 55, 0.35); stroke-width: 1.5; stroke-dasharray: 4 4; }
+
+    .chart-tooltip {
+      position: absolute;
+      min-width: 160px;
+      max-width: 260px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(24, 32, 44, 0.92);
+      color: white;
+      box-shadow: 0 16px 34px rgba(15, 23, 42, 0.24);
+      font-size: 12px;
+      line-height: 1.45;
+      pointer-events: none;
+      opacity: 0;
+      transform: translate3d(0, 6px, 0);
+      transition: opacity 120ms ease, transform 120ms ease;
+      z-index: 2;
+    }
+
+    .chart-tooltip.visible { opacity: 1; transform: translate3d(0, 0, 0); }
+    .tooltip-title { margin-bottom: 6px; font-size: 12px; font-weight: 800; color: rgba(255,255,255,0.86); }
+    .tooltip-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .tooltip-row + .tooltip-row { margin-top: 4px; }
+    .tooltip-name { display: inline-flex; align-items: center; gap: 8px; }
+
+    .metric-grid, .subject-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .mini-card {
+      padding: 18px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.58);
+      border: 1px solid rgba(255, 255, 255, 0.8);
+    }
+
+    .mini-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .mini-title h3 { margin: 0; font-size: 16px; letter-spacing: -0.02em; }
+    .mini-title span { color: var(--muted); font-size: 12px; font-weight: 700; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      padding: 12px 10px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+      text-align: left;
+      font-size: 14px;
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .small { color: var(--muted); font-size: 12px; line-height: 1.55; }
+
+    @media (max-width: 1080px) {
+      .top-grid,
+      .main-grid,
+      .summary-stats, .metric-grid, .subject-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 720px) {
+      .shell { padding: 18px 14px 44px; }
+      .card, .sidebar { padding: 18px; }
+      .top-grid,
+      .main-grid,
+      .summary-stats, .metric-grid, .subject-grid { grid-template-columns: 1fr; }
+      .card-head { align-items: start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="shell">
+    <section class="hero">
+      <span class="eyebrow">Score Trend Viewer</span>
+      <h1><span class="title-soft">노션 DB를 이용한</span> 성적 추이 분석</h1>
+    </section>
+
+    <section class="layout">
+      <div class="content">
+        <div class="top-grid">
+          <section class="card panel">
+            <div class="card-head">
+              <div>
+                <h2 class="card-title">데이터</h2>
+                <p class="card-note">노션 데이터베이스 캐시하여 JSON으로 변환 후 렌더링</p>
+              </div>
+            </div>
+            <div class="button-row">
+              <button class="primary" @click="refreshData" :disabled="loading">불러오기</button>
+              <button class="secondary" @click="refreshData" :disabled="loading">새로고침</button>
+            </div>
+            <div class="status" :class="statusTone">{{ statusMessage }}</div>
+          </section>
+
+          <section class="card panel">
+            <div class="card-head">
+              <div>
+                <h2 class="card-title">요약</h2>
+                <p class="card-note">불러온 전체 페이지 기준입니다.</p>
+              </div>
+            </div>
+            <div class="summary-stats">
+              <div class="stat" v-for="stat in summaryStats" :key="stat.label">
+                <div class="stat-label">{{ stat.label }}</div>
+                <div class="stat-value">{{ stat.value }}</div>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="main-grid">
+          <aside class="sidebar panel">
+            <div class="section">
+              <h2 class="section-title">이동</h2>
+              <p class="section-copy">주요 블록으로 바로 이동합니다.</p>
+              <div class="nav-grid">
+                <a class="nav-link" href="#app"><i class="nav-link-icon bi bi-arrow-up-circle"></i>맨 위로 올라가기</a>
+                <a class="nav-link" href="#metric-section"><i class="nav-link-icon bi bi-bar-chart-line"></i>핵심 지표 비교</a>
+                <a class="nav-link" href="#subject-section"><i class="nav-link-icon bi bi-graph-up-arrow"></i>과목별 추이</a>
+              </div>
+            </div>
+
+            <div class="section">
+              <h2 class="section-title">해석</h2>
+              <p class="section-copy">{{ insightText }}</p>
+            </div>
+          </aside>
+
+          <div class="content">
+            <section class="card panel">
+              <div class="card-head">
+                <div>
+                  <h2 class="card-title">{{ selectedMetricLabel }} 중심 전체 추이</h2>
+                  <p class="card-note">{{ sourceTitle }} 데이터를 생성일 순서로 표시합니다.</p>
+                  <div class="inline-controls">
+                    <button
+                      v-for="metric in selectableMetrics"
+                      :key="metric.key"
+                      class="chip"
+                      :class="{ active: metric.key === selectedMetric }"
+                      @click="selectedMetric = metric.key"
+                    >
+                      {{ metric.label }}
+                    </button>
+                  </div>
+                </div>
+                <div class="legend">
+                  <span class="legend-item" v-for="item in mainLegend" :key="item.name">
+                    <span class="legend-dot" :style="{ background: item.color }"></span>{{ item.name }}
+                  </span>
+                </div>
+              </div>
+              <div class="chart-frame" ref="mainChart"></div>
+            </section>
+
+            <section class="card panel" id="metric-section">
+              <div class="card-head">
+                <div>
+                  <h2 class="card-title">핵심 지표 비교</h2>
+                  <p class="card-note">대표 지표들을 작은 그래프로 동시에 비교합니다.</p>
+                </div>
+              </div>
+              <div class="metric-grid">
+                <div class="mini-card" v-for="metric in metricDefinitions" :key="metric.key">
+                  <div class="mini-title">
+                    <h3>{{ metric.label }}</h3>
+                    <span>{{ formatMetricValue(metric.key, lastRow?.[metric.key]) }}</span>
+                  </div>
+                  <div :ref="setMetricRef(metric.key)"></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="card panel" id="subject-section">
+              <div class="card-head">
+                <div>
+                  <h2 class="card-title">과목별 추이</h2>
+                  <p class="card-note">`10/14`는 `맞은개수/응답수`로 해석하고, 과목별 추이는 앞의 맞은개수 기준으로 y축 최대 20으로 표시합니다.</p>
+                </div>
+              </div>
+              <div class="subject-grid" v-if="subjects.length">
+                <div class="mini-card" v-for="subject in subjects" :key="subject">
+                  <div class="mini-title">
+                    <h3>{{ subject }}</h3>
+                    <span>{{ formatMetricValue('점수', lastRow?.subjects?.[subject]?.['점수']) }}</span>
+                  </div>
+                  <div :ref="setSubjectRef(subject)"></div>
+                </div>
+              </div>
+              <div class="small" v-else>과목별 `10/14` 형식 속성을 찾지 못했습니다.</div>
+            </section>
+
+            <section class="card panel">
+              <div class="card-head">
+                <div>
+                  <h2 class="card-title">원본 테이블</h2>
+                  <p class="card-note">그래프에 사용한 회차별 전체 수치입니다.</p>
+                </div>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>회차</th>
+                    <th>이름</th>
+                    <th>점수</th>
+                    <th>정답률</th>
+                    <th>응답수</th>
+                    <th>미답수</th>
+                    <th>틀린개수</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in trendRows" :key="row.id">
+                    <td><strong>{{ row.xLabel }}</strong></td>
+                    <td>{{ row.title }}</td>
+                    <td>{{ formatMetricValue('점수', row.점수) }}</td>
+                    <td>{{ formatMetricValue('정답률', row.정답률) }}</td>
+                    <td>{{ formatMetricValue('응답수', row.응답수) }}</td>
+                    <td>{{ formatMetricValue('미답수', row.미답수) }}</td>
+                    <td>{{ formatMetricValue('틀린개수', row.틀린개수) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const { createApp, nextTick } = Vue;
+
+    const palette = ["#c56b2d", "#2f6c62", "#c93f5a", "#6976d9", "#7c8c2f", "#9d5ec9"];
+    const subjectOrder = ["언어이해", "자료해석", "창의수리", "언어추리", "수열추리"];
+    const selectableMetricKeys = ["정답률", "응답수", "미답수", "틀린개수"];
+    const metricDefinitions = [
+      { key: "점수", label: "점수", suffix: "", color: "#c56b2d" },
+      { key: "정답률", label: "정답률", suffix: "%", color: "#2f6c62" },
+      { key: "응답수", label: "응답수", suffix: "", color: "#6976d9" },
+      { key: "미답수", label: "미답수", suffix: "", color: "#9d5ec9" },
+      { key: "틀린개수", label: "틀린개수", suffix: "", color: "#c93f5a" }
+    ];
+    const metricMap = Object.fromEntries(metricDefinitions.map(item => [item.key, item]));
+
+    async function proxyFetch(path, { method = "GET", body } = {}) {
+      const response = await fetch(path, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined
+      });
+      const text = await response.text();
+      const json = text ? JSON.parse(text) : null;
+      if (!response.ok) throw new Error(json?.message || `${response.status} ${response.statusText}`);
+      return json;
+    }
+
+    async function fetchCache() {
+      const response = await fetch(`/data/notion_mock_cache.json?ts=${Date.now()}`, {
+        headers: { "Cache-Control": "no-store" }
+      });
+      const text = await response.text();
+      const json = text ? JSON.parse(text) : null;
+      if (!response.ok) throw new Error(json?.message || `${response.status} ${response.statusText}`);
+      return json;
+    }
+
+    function richTextToPlain(list) {
+      if (!Array.isArray(list)) return "";
+      return list.map(item => item.plain_text || item.text?.content || "").join("");
+    }
+
+    function normalizeProperty(property) {
+      if (!property) return { kind: "empty", value: null, label: "" };
+      switch (property.type) {
+        case "title": {
+          const text = richTextToPlain(property.title);
+          return { kind: "text", value: text, label: text };
+        }
+        case "rich_text": {
+          const text = richTextToPlain(property.rich_text);
+          return { kind: "text", value: text, label: text };
+        }
+        case "number":
+          return { kind: "number", value: property.number, label: property.number ?? "" };
+        case "date":
+          return { kind: "date", value: property.date?.start || null, label: property.date?.start || "" };
+        case "select":
+          return { kind: "text", value: property.select?.name || "", label: property.select?.name || "" };
+        case "status":
+          return { kind: "text", value: property.status?.name || "", label: property.status?.name || "" };
+        case "multi_select":
+          return { kind: "text", value: (property.multi_select || []).map(item => item.name).join(", "), label: (property.multi_select || []).map(item => item.name).join(", ") };
+        case "formula": {
+          const formula = property.formula || {};
+          if (formula.type === "number") return { kind: "number", value: formula.number, label: formula.number ?? "" };
+          if (formula.type === "string") return { kind: "text", value: formula.string || "", label: formula.string || "" };
+          if (formula.type === "date") return { kind: "date", value: formula.date?.start || null, label: formula.date?.start || "" };
+          return { kind: "text", value: "", label: "" };
+        }
+        default:
+          return { kind: "text", value: "", label: "" };
+      }
+    }
+
+    function parsePage(page) {
+      const parsed = {
+        id: page.id,
+        title: page.id,
+        properties: {}
+      };
+      for (const [name, property] of Object.entries(page.properties || {})) {
+        const normalized = normalizeProperty(property);
+        parsed.properties[name] = normalized;
+        if (property.type === "title" && normalized.label) parsed.title = normalized.label;
+      }
+      return parsed;
+    }
+
+    function getFirstNumber(row, names) {
+      for (const name of names) {
+        const value = row.properties[name]?.value;
+        if (typeof value === "number") return value;
+      }
+      return null;
+    }
+
+    function getFirstText(row, names) {
+      for (const name of names) {
+        const value = row.properties[name]?.value;
+        if (value != null && String(value).trim()) return String(value).trim();
+      }
+      return "";
+    }
+
+    function extractSubjects(row) {
+      const subjects = {};
+      for (const [name, parsed] of Object.entries(row.properties)) {
+        if (parsed.kind !== "text") continue;
+        const match = String(parsed.value || "").trim().match(/^(\d+)\s*\/\s*(\d+)$/);
+        if (!match) continue;
+        const correct = Number(match[1]);
+        const responded = Number(match[2]);
+        subjects[name] = {
+          점수: correct,
+          응답수: responded,
+          정답률: responded ? Math.round((correct / responded) * 100) : 0,
+          틀린개수: Math.max(0, responded - correct),
+          미답수: null
+        };
+      }
+      return subjects;
+    }
+
+    function toTrendRows(rows) {
+      return rows.map((row, index) => {
+        const score = getFirstNumber(row, ["점수", "총점", "맞은개수"]);
+        const responded = getFirstNumber(row, ["응답수"]);
+        const accuracy = getFirstNumber(row, ["정답률"]);
+        return {
+          id: row.id,
+          title: getFirstText(row, ["이름", "제목", "모의고사명"]) || row.title,
+          xLabel: `${index + 1}회`,
+          점수: score,
+          정답률: accuracy,
+          응답수: responded,
+          미답수: typeof responded === "number" ? Math.max(0, 100 - responded) : null,
+          틀린개수: typeof responded === "number" && typeof score === "number" ? Math.max(0, responded - score) : null,
+          subjects: extractSubjects(row)
+        };
+      }).filter(row =>
+        [row.점수, row.정답률, row.응답수, row.미답수, row.틀린개수].some(value => typeof value === "number")
+        || Object.keys(row.subjects).length
+      );
+    }
+
+    function average(values) {
+      if (!values.length) return 0;
+      return values.reduce((sum, value) => sum + value, 0) / values.length;
+    }
+
+    function delta(values) {
+      if (values.length < 2) return 0;
+      return values[values.length - 1] - values[0];
+    }
+
+    function formatMetricValue(metricKey, value) {
+      if (value == null || Number.isNaN(value)) return "-";
+      const suffix = metricMap[metricKey]?.suffix || "";
+      return `${typeof value === "number" ? Math.round(value).toLocaleString("ko-KR") : value}${suffix}`;
+    }
+
+    function createPath(points) {
+      return points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+    }
+
+    function createAreaPath(points, baseline) {
+      if (!points.length) return "";
+      const start = `${points[0].x} ${baseline}`;
+      const end = `${points[points.length - 1].x} ${baseline}`;
+      return `M ${start} L ${points[0].x} ${points[0].y} ${points.slice(1).map(point => `L ${point.x} ${point.y}`).join(" ")} L ${end} Z`;
+    }
+
+    function renderLineChart({ el, labels, series, height = 340, compact = false, metricKey, showAverageLine = false, fixedMin = null, fixedMax = null }) {
+      if (!el || !labels.length || !series.length) {
+        if (el) el.innerHTML = `<div class="small" style="padding:16px;">표시할 데이터가 없습니다.</div>`;
+        return;
+      }
+
+      const width = compact ? 460 : 960;
+      const padding = compact ? { top: 18, right: 18, bottom: 28, left: 36 } : { top: 28, right: 28, bottom: 42, left: 48 };
+      const allValues = series.flatMap(item => item.values).filter(value => typeof value === "number");
+      const rawMin = Math.min(...allValues);
+      const rawMax = Math.max(...allValues);
+      const spread = rawMax - rawMin || 1;
+      const yMin = fixedMin ?? Math.max(0, Math.floor((rawMin - spread * 0.15) / 5) * 5);
+      const yMax = fixedMax ?? (Math.ceil((rawMax + spread * 0.15) / 5) * 5 || rawMax + 1);
+      const plotWidth = width - padding.left - padding.right;
+      const plotHeight = height - padding.top - padding.bottom;
+      const xStep = labels.length > 1 ? plotWidth / (labels.length - 1) : plotWidth;
+      const x = index => padding.left + xStep * index;
+      const y = value => padding.top + ((yMax - value) / (yMax - yMin || 1)) * plotHeight;
+      const yTicks = Array.from({ length: 5 }, (_, index) => yMin + ((yMax - yMin) / 4) * index);
+      const averages = series.map(item => average(item.values));
+      const pointsBySeries = series.map(item => item.values.map((value, index) => ({ x: x(index), y: y(value), value, label: labels[index] })));
+
+      const seriesMarkup = series.map((item, seriesIndex) => {
+        const points = pointsBySeries[seriesIndex];
+        return `
+          <path class="area" d="${createAreaPath(points, padding.top + plotHeight)}" fill="${item.color}"></path>
+          <path class="line" d="${createPath(points)}" stroke="${item.color}"></path>
+          ${points.map(point => `<circle class="point" cx="${point.x}" cy="${point.y}" r="${compact ? 4 : 5}" fill="${item.color}"></circle>`).join("")}
+        `;
+      }).join("");
+
+      el.style.position = "relative";
+      el.style.overflow = "hidden";
+      el.innerHTML = `
+        <div class="chart-tooltip"></div>
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="선 그래프">
+          ${yTicks.map(tick => {
+            const yy = y(tick);
+            return `<line class="grid" x1="${padding.left}" x2="${width - padding.right}" y1="${yy}" y2="${yy}"></line><text class="axis-text" x="${padding.left - 10}" y="${yy + 4}" text-anchor="end">${Math.round(tick)}</text>`;
+          }).join("")}
+          ${showAverageLine ? averages.map(avg => `<line class="avg-line" x1="${padding.left}" x2="${width - padding.right}" y1="${y(avg)}" y2="${y(avg)}"></line>`).join("") : ""}
+          ${seriesMarkup}
+          <line class="hover-line" x1="${padding.left}" x2="${padding.left}" y1="${padding.top}" y2="${padding.top + plotHeight}" visibility="hidden"></line>
+          ${series.map(() => `<circle class="hover-marker" cx="0" cy="0" r="${compact ? 4 : 5}" visibility="hidden"></circle>`).join("")}
+          ${labels.map((label, index) => (!compact && labels.length > 8 && index % 2 === 1) ? "" : `<text class="axis-text" x="${x(index)}" y="${height - 14}" text-anchor="middle">${label}</text>`).join("")}
+        </svg>
+      `;
+
+      const svg = el.querySelector("svg");
+      const tooltip = el.querySelector(".chart-tooltip");
+      const hoverLine = el.querySelector(".hover-line");
+      const hoverMarkers = Array.from(el.querySelectorAll(".hover-marker"));
+
+      function hideTooltip() {
+        tooltip.classList.remove("visible");
+        hoverLine.setAttribute("visibility", "hidden");
+        hoverMarkers.forEach(marker => marker.setAttribute("visibility", "hidden"));
+      }
+
+      function showTooltip(event) {
+        const rect = svg.getBoundingClientRect();
+        const effectiveStep = labels.length > 1 ? xStep : plotWidth;
+        const relativeX = ((event.clientX - rect.left) / rect.width) * width;
+        const index = Math.max(0, Math.min(labels.length - 1, Math.round((relativeX - padding.left) / effectiveStep)));
+        const pointX = x(index);
+        const rows = series.map((item, seriesIndex) => {
+          const point = pointsBySeries[seriesIndex][index];
+          const marker = hoverMarkers[seriesIndex];
+          marker.setAttribute("cx", point.x);
+          marker.setAttribute("cy", point.y);
+          marker.setAttribute("fill", item.color);
+          marker.setAttribute("visibility", "visible");
+          return `
+            <div class="tooltip-row">
+              <span class="tooltip-name"><span class="tooltip-swatch" style="background:${item.color}"></span>${item.name}</span>
+              <strong>${formatMetricValue(item.metricKey || metricKey, point.value)}</strong>
+            </div>
+            <div class="tooltip-row">
+              <span class="tooltip-name">평균</span>
+              <strong>${formatMetricValue(item.metricKey || metricKey, averages[seriesIndex])}</strong>
+            </div>
+          `;
+        }).join("");
+
+        hoverLine.setAttribute("x1", pointX);
+        hoverLine.setAttribute("x2", pointX);
+        hoverLine.setAttribute("visibility", "visible");
+        tooltip.innerHTML = `<div class="tooltip-title">${labels[index]}</div>${rows}`;
+        tooltip.classList.add("visible");
+
+        const tooltipWidth = tooltip.offsetWidth || 180;
+        const tooltipHeight = tooltip.offsetHeight || 80;
+        const pointerX = event.clientX - rect.left;
+        const pointerY = event.clientY - rect.top;
+        tooltip.style.left = `${Math.min(Math.max(8, pointerX + 14), rect.width - tooltipWidth - 8)}px`;
+        tooltip.style.top = `${Math.min(Math.max(8, pointerY - tooltipHeight - 14), rect.height - tooltipHeight - 8)}px`;
+      }
+
+      svg.addEventListener("mousemove", showTooltip);
+      svg.addEventListener("mouseenter", showTooltip);
+      svg.addEventListener("mouseleave", hideTooltip);
+    }
+
+    createApp({
+      data() {
+        return {
+          loading: false,
+          filterText: "",
+          configCopy: "서버 설정을 읽는 중입니다.",
+          statusMessage: "로컬 프록시 상태를 확인하는 중입니다.",
+          statusTone: "",
+          sourceTitle: "Notion source",
+          selectedMetric: "정답률",
+          metricDefinitions,
+          trendRows: [],
+          subjects: [],
+          metricRefs: {},
+          subjectRefs: {}
+        };
+      },
+      computed: {
+        selectedMetricLabel() {
+          return metricMap[this.selectedMetric]?.label || this.selectedMetric;
+        },
+        selectableMetrics() {
+          return this.metricDefinitions.filter(metric => selectableMetricKeys.includes(metric.key));
+        },
+        lastRow() {
+          return this.trendRows[this.trendRows.length - 1] || null;
+        },
+        summaryStats() {
+          const scoreValues = this.trendRows.map(row => row.점수).filter(v => typeof v === "number");
+          const accValues = this.trendRows.map(row => row.정답률).filter(v => typeof v === "number");
+          return [
+            { label: "모의고사 수", value: `${this.trendRows.length}` },
+            { label: "평균 점수", value: scoreValues.length ? `${Math.round(average(scoreValues))}` : "-" },
+            { label: "최고 정답률", value: accValues.length ? `${Math.round(Math.max(...accValues))}%` : "-" },
+            { label: "과목 수", value: `${this.subjects.length}` }
+          ];
+        },
+        insightText() {
+          const values = this.trendRows.map(row => row[this.selectedMetric]).filter(v => typeof v === "number");
+          if (!values.length) return "선택한 지표 데이터가 없습니다.";
+          const change = delta(values);
+          const direction = change > 0 ? "상승" : change < 0 ? "하락" : "정체";
+          return `${this.selectedMetric}는 시작 대비 ${direction} 흐름이며 변화 폭은 ${formatMetricValue(this.selectedMetric, Math.abs(change))}입니다.`;
+        },
+        mainLegend() {
+          const selected = metricMap[this.selectedMetric];
+          const compare = this.selectedMetric === "점수" ? metricMap["정답률"] : metricMap["점수"];
+          return [
+            { name: selected.label, color: selected.color },
+            { name: compare.label, color: compare.color }
+          ];
+        }
+      },
+      methods: {
+        formatMetricValue,
+        setMetricRef(key) {
+          return el => { if (el) this.metricRefs[key] = el; };
+        },
+        setSubjectRef(subject) {
+          return el => { if (el) this.subjectRefs[subject] = el; };
+        },
+        async bootstrapConfig() {
+          try {
+            const config = await proxyFetch("/api/config");
+            this.filterText = config.filterText || "";
+            this.configCopy = config.hasToken && config.hasDatabaseId
+              ? "`.env`의 토큰과 데이터베이스 ID를 읽었습니다."
+              : "`.env` 설정이 부족합니다. 토큰 또는 DB ID를 확인하세요.";
+            this.statusMessage = config.hasToken && config.hasDatabaseId
+              ? (config.hasCache ? "서버 설정과 캐시 파일을 읽었습니다." : "서버 설정을 읽었습니다. 아직 캐시 파일은 없습니다.")
+              : "`.env`에 NOTION_ACCESS_TOKEN 또는 NOTION_DATABASE_ID가 없습니다.";
+            this.statusTone = config.hasToken && config.hasDatabaseId ? "ok" : "warn";
+            if (config.hasCache) {
+              await this.loadFromCache();
+            }
+          } catch (error) {
+            this.statusMessage = "로컬 프록시 서버에 연결하지 못했습니다. `node notion_proxy_server.js`로 실행해 주세요.";
+            this.statusTone = "error";
+            this.configCopy = "서버 연결 실패";
+          }
+        },
+        async loadFromCache() {
+          try {
+            const response = await fetchCache();
+            const rows = (response.pages || []).map(parsePage);
+            this.sourceTitle = response.sourceTitle || response.databaseTitle || "Notion source";
+            this.filterText = response.filterText || this.filterText;
+            this.trendRows = toTrendRows(rows);
+            const discoveredSubjects = Array.from(new Set(this.trendRows.flatMap(row => Object.keys(row.subjects || {}))));
+            this.subjects = [
+              ...subjectOrder.filter(subject => discoveredSubjects.includes(subject)),
+              ...discoveredSubjects.filter(subject => !subjectOrder.includes(subject))
+            ];
+            this.statusMessage = `${this.sourceTitle} 캐시에서 페이지 ${this.trendRows.length}개를 읽었습니다.`;
+            this.statusTone = "ok";
+            await nextTick();
+            this.renderCharts();
+          } catch (error) {
+            console.error(error);
+            this.trendRows = [];
+            this.subjects = [];
+            this.statusMessage = `캐시 읽기에 실패했습니다: ${error.message}`;
+            this.statusTone = "error";
+          }
+        },
+        async refreshData() {
+          this.loading = true;
+          this.statusMessage = "노션 API로 접근해서 JSON 캐시를 갱신하는 중입니다...";
+          this.statusTone = "";
+          try {
+            await proxyFetch("/api/refresh", { method: "POST" });
+            await this.loadFromCache();
+            this.statusMessage = `${this.sourceTitle} 캐시를 갱신했고 페이지 ${this.trendRows.length}개를 다시 읽었습니다.`;
+            this.statusTone = "ok";
+          } catch (error) {
+            console.error(error);
+            this.statusMessage = `갱신에 실패했습니다: ${error.message}`;
+            this.statusTone = "error";
+          } finally {
+            this.loading = false;
+          }
+        },
+        renderCharts() {
+          if (!this.trendRows.length) return;
+          const labels = this.trendRows.map(row => row.xLabel);
+          const selected = metricMap[this.selectedMetric];
+          const compare = this.selectedMetric === "점수" ? metricMap["정답률"] : metricMap["점수"];
+
+          renderLineChart({
+            el: this.$refs.mainChart,
+            labels,
+            metricKey: this.selectedMetric,
+            series: [
+              { name: selected.label, values: this.trendRows.map(row => row[selected.key] ?? 0), color: selected.color, metricKey: selected.key },
+              { name: compare.label, values: this.trendRows.map(row => row[compare.key] ?? 0), color: compare.color, metricKey: compare.key }
+            ],
+            height: 380
+          });
+
+          this.metricDefinitions.forEach(metric => {
+            renderLineChart({
+              el: this.metricRefs[metric.key],
+              labels,
+              metricKey: metric.key,
+              series: [{
+                name: metric.label,
+                values: this.trendRows.map(row => row[metric.key] ?? 0),
+                color: metric.color,
+                metricKey: metric.key
+              }],
+              height: 180,
+              compact: true,
+              showAverageLine: true
+            });
+          });
+
+          this.subjects.forEach((subject, index) => {
+            renderLineChart({
+              el: this.subjectRefs[subject],
+              labels,
+              metricKey: "점수",
+              series: [{
+                name: subject,
+                values: this.trendRows.map(row => row.subjects?.[subject]?.["점수"] ?? 0),
+                color: palette[index % palette.length],
+                metricKey: "점수"
+              }],
+              height: 200,
+              compact: true,
+              showAverageLine: true,
+              fixedMin: 0,
+              fixedMax: 20
+            });
+          });
+        }
+      },
+      watch: {
+        selectedMetric() {
+          nextTick(() => this.renderCharts());
+        }
+      },
+      mounted() {
+        this.bootstrapConfig();
+      }
+    }).mount("#app");
+  </script>
+</body>
+</html>

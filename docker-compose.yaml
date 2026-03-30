@@ -1,0 +1,11 @@
+services:
+  skct-notion-viewer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: skct-notion-viewer
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env
+    restart: unless-stopped
