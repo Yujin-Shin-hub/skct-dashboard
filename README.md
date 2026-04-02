@@ -120,7 +120,7 @@ docker compose up -d
 ### 방법 B — Node.js 직접 실행
 
 ```bash
-node notion_proxy_server.js
+node backend/notion_proxy_server.js
 ```
 
 ---
@@ -170,12 +170,18 @@ Node.js 서버가 프록시 역할을 하여 API를 대신 호출하고 결과�
 
 ```
 .
-├── notion_proxy_server.js     # Node.js 프록시 서버
-├── notion_db_trend_viewer.html # 프론트엔드 (Vue 3 단일 파일)
+├── backend/
+│   └── notion_proxy_server.js  # Node.js 프록시 서버
+├── frontend/
+│   ├── notion_db_trend_viewer.html
+│   ├── notion_db_trend_viewer_basic.html
+│   ├── notion_db_trend_viewer_black.html
+│   ├── notion_db_trend_viewer_pink.html
+│   └── notion_db_trend_viewer_yellow.html
 ├── notion_mock_cache.json     # 노션 데이터 캐시 (자동 생성)
 ├── .env                       # 환경 변수 (직접 작성 필요)
 ├── Dockerfile
-└── compose.yaml
+└── docker-compose.yaml
 ```
 
 ---

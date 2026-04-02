@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Score Trend Viewer</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    :root {
+      --bg:           #0d1117;
+      --surface:      #161b27;
+      --surface-2:    #1c2233;
+      --surface-3:    #222840;
+      --border:       rgba(255,255,255,0.07);
+      --border-hi:    rgba(255,255,255,0.14);
+      --text:         #dde2f0;
+      --text-dim:     #7f88a8;
+      --text-faint:   #3d4460;
+      --accent:       #c56b2d;
+      --accent-2:     #3ab48a;
+      --ok:           #3ab48a;
+      --warn:         #d4922a;
+      --danger:       #d94f6a;
+      --r:            14px;
+      --r-sm:         9px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      font-family: "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    /* ───── TOPBAR ───── */
+    .topbar {
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .topbar-left { display: flex; align-items: center; gap: 12px; }
+
+    .logo {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px;
+      background: rgba(197,107,45,.15);
+      border: 1px solid rgba(197,107,45,.28);
+      border-radius: 7px;
+      color: var(--accent);
+      font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+    }
+
+    .topbar-title { font-size: 14px; font-weight: 700; letter-spacing: -.02em; }
+    .topbar-source { font-size: 12px; color: var(--text-dim); }
+
+    .topbar-right { display: flex; align-items: center; gap: 8px; }
+
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--text-faint); flex-shrink: 0;
+      transition: background .3s, box-shadow .3s;
+    }
+    .status-dot.ok    { background: var(--ok);   box-shadow: 0 0 8px var(--ok); }
+    .status-dot.warn  { background: var(--warn);  box-shadow: 0 0 8px var(--warn); }
+    .status-dot.error { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+
+    .status-msg {
+      font-size: 12px; color: var(--text-dim);
+      max-width: 340px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    .btn {
+      border: 0; border-radius: 8px; padding: 7px 14px;
+      cursor: pointer; font: inherit; font-size: 12px; font-weight: 700;
+      display: inline-flex; align-items: center; gap: 5px;
+      transition: opacity .14s, transform .14s;
+    }
+    .btn:hover:not(:disabled) { opacity: .82; transform: translateY(-1px); }
+    .btn:disabled { opacity: .35; cursor: not-allowed; }
+    .btn-ghost   { background: var(--surface-3); color: var(--text-dim); border: 1px solid var(--border-hi); }
+    .btn-primary { background: var(--accent); color: #fff; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { display: inline-block; animation: spin .7s linear infinite; }
+
+    /* ───── BODY = split pane ───── */
+    .app-body {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      height: calc(100vh - 52px);
+      overflow: hidden;
+    }
+
+    /* ───── LEFT PANE ───── */
+    .pane-left {
+      display: flex; flex-direction: column;
+      border-right: 1px solid var(--border);
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .pane-head {
+      padding: 14px 18px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .pane-label {
+      font-size: 10px; font-weight: 800;
+      letter-spacing: .08em; text-transform: uppercase;
+      color: var(--text-faint); margin-bottom: 10px;
+    }
+
+    .mtabs { display: flex; gap: 4px; flex-wrap: wrap; }
+
+    .mtab {
+      border: 1px solid var(--border); border-radius: 7px;
+      padding: 5px 11px;
+      background: var(--surface-3); color: var(--text-dim);
+      cursor: pointer; font: inherit; font-size: 12px; font-weight: 700;
+      transition: background .12s, color .12s, border-color .12s;
+    }
+    .mtab:hover { color: var(--text); border-color: var(--border-hi); }
+    .mtab.active { background: var(--accent); color: #fff; border-color: transparent; }
+
+    .legend {
+      display: flex; gap: 14px; flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-dim); }
+    .legend-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    .pane-body {
+      flex: 1; overflow: hidden;
+      display: flex; flex-direction: column;
+      gap: 12px; padding: 14px 18px;
+      min-height: 0;
+    }
+
+    /* stat row */
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px; flex-shrink: 0;
+    }
+
+    .stat-card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 10px 12px;
+    }
+    .stat-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint); }
+    .stat-value { font-size: 22px; font-weight: 800; letter-spacing: -.03em; margin-top: 2px; }
+
+    /* main chart container */
+    .main-chart-box {
+      flex: 1; min-height: 0;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .insight {
+      padding: 9px 13px;
+      background: rgba(197,107,45,.07);
+      border: 1px solid rgba(197,107,45,.16);
+      border-radius: var(--r-sm);
+      font-size: 12px; color: var(--text-dim); line-height: 1.5;
+      flex-shrink: 0;
+    }
+
+    /* empty state */
+    .empty {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 8px; color: var(--text-faint); font-size: 13px; text-align: center; padding: 40px;
+    }
+    .empty-icon { font-size: 30px; opacity: .5; }
+
+    /* ───── RIGHT PANE ───── */
+    .pane-right {
+      display: flex; flex-direction: column;
+      background: var(--surface);
+      overflow: hidden;
+    }
+
+    .rtab-bar {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .rtab {
+      flex: 1; border: 0; background: transparent;
+      padding: 13px 0;
+      font: inherit; font-size: 12px; font-weight: 700;
+      color: var(--text-faint); cursor: pointer;
+      transition: color .12s;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .rtab:hover { color: var(--text-dim); }
+    .rtab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+    .rpanel {
+      flex: 1; overflow-y: auto;
+      padding: 12px;
+      display: flex; flex-direction: column; gap: 9px;
+    }
+    .rpanel::-webkit-scrollbar { width: 3px; }
+    .rpanel::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 99px; }
+
+    /* mini chart card */
+    .mcard {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 11px 12px;
+      transition: border-color .14s;
+    }
+    .mcard:hover { border-color: var(--border-hi); }
+
+    .mcard-head {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .mcard-name { font-size: 12px; font-weight: 800; }
+    .mcard-val-wrap { text-align: right; }
+    .mcard-val-label { font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .05em; }
+    .mcard-val { font-size: 17px; font-weight: 800; letter-spacing: -.03em; }
+
+    /* table */
+    .tbl-wrap {
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: var(--r-sm); overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    th, td { padding: 7px 9px; border-bottom: 1px solid var(--border); text-align: left; }
+    th { color: var(--text-faint); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+    td { color: var(--text-dim); }
+    td strong { color: var(--text); font-weight: 700; }
+    tbody tr:last-child td { border-bottom: 0; }
+
+    /* ───── SVG / chart ───── */
+    svg { display: block; width: 100%; height: 100%; }
+    .grid-line { stroke: rgba(255,255,255,.05); stroke-width: 1; }
+    .avg-line { stroke: rgba(255,255,255,.18); stroke-width: 1.4; stroke-dasharray: 5 5; }
+    .axis-text { fill: #3d4460; font-size: 11px; }
+    .line { fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .area { opacity: .1; }
+    .point, .hover-marker { stroke: var(--bg); stroke-width: 2; }
+    .hover-line { stroke: rgba(255,255,255,.18); stroke-width: 1; stroke-dasharray: 4 4; }
+
+    .chart-tooltip {
+      position: absolute;
+      min-width: 140px; max-width: 220px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(13,17,23,.96);
+      border: 1px solid var(--border-hi);
+      color: var(--text);
+      box-shadow: 0 8px 24px rgba(0,0,0,.55);
+      font-size: 11px; line-height: 1.5;
+      pointer-events: none;
+      opacity: 0; transform: translate3d(0,6px,0);
+      transition: opacity .1s, transform .1s;
+      z-index: 10;
+    }
+    .chart-tooltip.visible { opacity: 1; transform: translate3d(0,0,0); }
+    .tt-title { font-size: 11px; font-weight: 800; color: var(--text-dim); margin-bottom: 5px; }
+    .tt-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .tt-row + .tt-row { margin-top: 3px; }
+    .tt-name { display: inline-flex; align-items: center; gap: 5px; color: var(--text-dim); }
+    .tt-swatch { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+    /* ───── responsive ───── */
+    @media (max-width: 860px) {
+      .app-body { grid-template-columns: 1fr; height: auto; overflow: auto; }
+      html, body { overflow: auto; }
+      .pane-left { height: 80vh; }
+      .pane-right { height: 500px; }
+    }
+    @media (max-width: 560px) {
+      .stat-row { grid-template-columns: repeat(2,1fr); }
+      .topbar { flex-wrap: wrap; height: auto; padding: 10px 16px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app" style="display:flex;flex-direction:column;height:100vh;">
+
+  <!-- ── Topbar ── -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="logo">📊 Score Trend</span>
+      <span class="topbar-title">성적 추이 분석</span>
+      <span class="topbar-source" v-if="sourceTitle !== 'Notion source'">· {{ sourceTitle }}</span>
+    </div>
+    <div class="topbar-right">
+      <div class="status-dot" :class="statusTone"></div>
+      <span class="status-msg">{{ statusMessage }}</span>
+      <button class="btn btn-ghost" @click="refreshData" :disabled="loading">
+        <span :class="loading ? 'spin' : ''">⟳</span> 새로고침
+      </button>
+      <button class="btn btn-primary" @click="refreshData" :disabled="loading">불러오기</button>
+    </div>
+  </header>
+
+  <!-- ── Split body ── -->
+  <div class="app-body">
+
+    <!-- LEFT: 메인 차트 -->
+    <div class="pane-left">
+      <div class="pane-head">
+        <div class="pane-label">전체 추이 — {{ selectedMetricLabel }}</div>
+        <div class="mtabs">
+          <button
+            v-for="m in selectableMetrics" :key="m.key"
+            class="mtab" :class="{ active: m.key === selectedMetric }"
+            @click="selectedMetric = m.key"
+          >{{ m.label }}</button>
+        </div>
+        <div class="legend" v-if="mainLegend.length">
+          <span class="legend-item" v-for="item in mainLegend" :key="item.name">
+            <span class="legend-dot" :style="{ background: item.color }"></span>{{ item.name }}
+          </span>
+        </div>
+      </div>
+
+      <div class="pane-body">
+        <!-- 요약 통계 -->
+        <div class="stat-row">
+          <div class="stat-card" v-for="s in summaryStats" :key="s.label">
+            <div class="stat-label">{{ s.label }}</div>
+            <div class="stat-value">{{ s.value }}</div>
+          </div>
+        </div>
+
+        <!-- 메인 차트 -->
+        <div class="main-chart-box" ref="mainChart">
+          <div class="empty" v-if="!trendRows.length">
+            <div class="empty-icon">📈</div>
+            <div>데이터를 불러오면 차트가 표시됩니다</div>
+            <div style="font-size:11px;margin-top:2px;">'불러오기'를 눌러주세요</div>
+          </div>
+        </div>
+
+        <!-- 인사이트 -->
+        <div class="insight" v-if="trendRows.length">💡 {{ insightText }}</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: 탭 패널 -->
+    <div class="pane-right">
+      <div class="rtab-bar">
+        <button class="rtab" :class="{ active: rightTab==='metrics'  }" @click="switchTab('metrics')">핵심 지표</button>
+        <button class="rtab" :class="{ active: rightTab==='subjects' }" @click="switchTab('subjects')">과목별 추이</button>
+        <button class="rtab" :class="{ active: rightTab==='table'    }" @click="switchTab('table')">원본 테이블</button>
+      </div>
+
+      <!-- 핵심 지표 탭 -->
+      <div class="rpanel" v-show="rightTab==='metrics'">
+        <div class="empty" style="position:relative;height:120px;" v-if="!trendRows.length">
+          <div class="empty-icon">📊</div><div>데이터 없음</div>
+        </div>
+        <div class="mcard" v-for="m in metricDefinitions" :key="m.key">
+          <div class="mcard-head">
+            <span class="mcard-name">{{ m.label }}</span>
+            <div class="mcard-val-wrap">
+              <div class="mcard-val-label">최신값</div>
+              <div class="mcard-val" :style="{ color: m.color }">{{ formatMetricValue(m.key, lastRow?.[m.key]) }}</div>
+            </div>
+          </div>
+          <div :ref="setMetricRef(m.key)"></div>
+        </div>
+      </div>
+
+      <!-- 과목별 탭 -->
+      <div class="rpanel" v-show="rightTab==='subjects'">
+        <div class="empty" style="position:relative;height:120px;" v-if="!subjects.length">
+          <div class="empty-icon">📚</div>
+          <div>과목 데이터 없음</div>
+          <div style="font-size:11px;margin-top:4px;">DB에 18/20 형식의 속성을 추가하세요</div>
+        </div>
+        <div class="mcard" v-for="(subject, idx) in subjects" :key="subject">
+          <div class="mcard-head">
+            <span class="mcard-name">{{ subject }}</span>
+            <div class="mcard-val-wrap">
+              <div class="mcard-val-label">최신값</div>
+              <div class="mcard-val" :style="{ color: palette[idx % palette.length] }">
+                {{ formatMetricValue('점수', lastRow?.subjects?.[subject]?.['점수']) }}
+              </div>
+            </div>
+          </div>
+          <div :ref="setSubjectRef(subject)"></div>
+        </div>
+      </div>
+
+      <!-- 원본 테이블 탭 -->
+      <div class="rpanel" v-show="rightTab==='table'">
+        <div class="empty" style="position:relative;height:120px;" v-if="!trendRows.length">
+          <div class="empty-icon">🗂️</div><div>데이터 없음</div>
+        </div>
+        <div class="tbl-wrap" v-else>
+          <table>
+            <thead>
+              <tr>
+                <th>회차</th><th>이름</th><th>점수</th>
+                <th>정답률</th><th>응답수</th><th>미답수</th><th>틀린개수</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in trendRows" :key="row.id">
+                <td><strong>{{ row.xLabel }}</strong></td>
+                <td>{{ row.title }}</td>
+                <td>{{ formatMetricValue('점수', row.점수) }}</td>
+                <td>{{ formatMetricValue('정답률', row.정답률) }}</td>
+                <td>{{ formatMetricValue('응답수', row.응답수) }}</td>
+                <td>{{ formatMetricValue('미답수', row.미답수) }}</td>
+                <td>{{ formatMetricValue('틀린개수', row.틀린개수) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- /pane-right -->
+  </div><!-- /app-body -->
+</div><!-- /#app -->
+
+<script>
+  const { createApp, nextTick } = Vue;
+
+  const palette = ["#c56b2d","#3ab48a","#d94f6a","#6976d9","#a3c44a","#9d5ec9"];
+  const subjectOrder = ["언어이해","자료해석","창의수리","언어추리","수열추리"];
+  const selectableMetricKeys = ["정답률","응답수","미답수","틀린개수"];
+
+  const metricDefinitions = [
+    { key:"점수",    label:"점수",    suffix:"",  color:"#c56b2d" },
+    { key:"정답률",  label:"정답률",  suffix:"%", color:"#3ab48a" },
+    { key:"응답수",  label:"응답수",  suffix:"",  color:"#6976d9" },
+    { key:"미답수",  label:"미답수",  suffix:"",  color:"#9d5ec9" },
+    { key:"틀린개수",label:"틀린개수",suffix:"",  color:"#d94f6a" }
+  ];
+  const metricMap = Object.fromEntries(metricDefinitions.map(m => [m.key, m]));
+
+  /* ── utils ── */
+  async function proxyFetch(path, { method="GET", body }={}) {
+    const res = await fetch(path, {
+      method,
+      headers: { "Content-Type":"application/json" },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const text = await res.text();
+    const json = text ? JSON.parse(text) : null;
+    if (!res.ok) throw new Error(json?.message || `${res.status}`);
+    return json;
+  }
+
+  async function fetchCache() {
+    const res = await fetch(`/data/notion_mock_cache.json?ts=${Date.now()}`, {
+      headers: { "Cache-Control":"no-store" }
+    });
+    const text = await res.text();
+    const json = text ? JSON.parse(text) : null;
+    if (!res.ok) throw new Error(json?.message || `${res.status}`);
+    return json;
+  }
+
+  function richTextToPlain(list) {
+    if (!Array.isArray(list)) return "";
+    return list.map(i => i.plain_text || i.text?.content || "").join("");
+  }
+
+  function normalizeProperty(p) {
+    if (!p) return { kind:"empty", value:null, label:"" };
+    switch (p.type) {
+      case "title":       { const t = richTextToPlain(p.title);      return { kind:"text",   value:t, label:t }; }
+      case "rich_text":   { const t = richTextToPlain(p.rich_text);   return { kind:"text",   value:t, label:t }; }
+      case "number":        return { kind:"number", value:p.number, label:p.number ?? "" };
+      case "date":          return { kind:"date",   value:p.date?.start||null, label:p.date?.start||"" };
+      case "select":        return { kind:"text",   value:p.select?.name||"", label:p.select?.name||"" };
+      case "status":        return { kind:"text",   value:p.status?.name||"", label:p.status?.name||"" };
+      case "multi_select":  return { kind:"text",   value:(p.multi_select||[]).map(i=>i.name).join(", "), label:(p.multi_select||[]).map(i=>i.name).join(", ") };
+      case "formula": {
+        const f = p.formula || {};
+        if (f.type==="number") return { kind:"number", value:f.number, label:f.number??""  };
+        if (f.type==="string") return { kind:"text",   value:f.string||"", label:f.string||"" };
+        if (f.type==="date")   return { kind:"date",   value:f.date?.start||null, label:f.date?.start||"" };
+        return { kind:"text", value:"", label:"" };
+      }
+      default: return { kind:"text", value:"", label:"" };
+    }
+  }
+
+  function parsePage(page) {
+    const parsed = { id:page.id, title:page.id, properties:{} };
+    for (const [name, prop] of Object.entries(page.properties||{})) {
+      const n = normalizeProperty(prop);
+      parsed.properties[name] = n;
+      if (prop.type==="title" && n.label) parsed.title = n.label;
+    }
+    return parsed;
+  }
+
+  function getFirstNumber(row, names) {
+    for (const n of names) { const v = row.properties[n]?.value; if (typeof v==="number") return v; }
+    return null;
+  }
+  function getFirstText(row, names) {
+    for (const n of names) { const v = row.properties[n]?.value; if (v!=null && String(v).trim()) return String(v).trim(); }
+    return "";
+  }
+  function extractSubjects(row) {
+    const s = {};
+    for (const [name, parsed] of Object.entries(row.properties)) {
+      if (parsed.kind !== "text") continue;
+      const m = String(parsed.value||"").trim().match(/^(\d+)\s*\/\s*(\d+)$/);
+      if (!m) continue;
+      const correct = +m[1], responded = +m[2];
+      s[name] = { 점수:correct, 응답수:responded, 정답률:responded ? Math.round(correct/responded*100) : 0, 틀린개수:Math.max(0,responded-correct), 미답수:null };
+    }
+    return s;
+  }
+  function toTrendRows(rows) {
+    return rows.map((row, i) => {
+      const score     = getFirstNumber(row, ["점수","총점","맞은개수"]);
+      const responded = getFirstNumber(row, ["응답수"]);
+      const accuracy  = getFirstNumber(row, ["정답률"]);
+      return {
+        id: row.id,
+        title: getFirstText(row, ["이름","제목","모의고사명"]) || row.title,
+        xLabel: `${i+1}회`,
+        점수: score, 정답률: accuracy, 응답수: responded,
+        미답수: typeof responded==="number" ? Math.max(0,100-responded) : null,
+        틀린개수: typeof responded==="number" && typeof score==="number" ? Math.max(0,responded-score) : null,
+        subjects: extractSubjects(row)
+      };
+    }).filter(r =>
+      [r.점수,r.정답률,r.응답수,r.미답수,r.틀린개수].some(v=>typeof v==="number")
+      || Object.keys(r.subjects).length
+    );
+  }
+  function avg(vals) { return vals.length ? vals.reduce((s,v)=>s+v,0)/vals.length : 0; }
+  function delta(vals) { return vals.length<2 ? 0 : vals[vals.length-1]-vals[0]; }
+  function fmt(key, val) {
+    if (val==null||Number.isNaN(val)) return "-";
+    const sfx = metricMap[key]?.suffix||"";
+    return `${typeof val==="number" ? Math.round(val).toLocaleString("ko-KR") : val}${sfx}`;
+  }
+
+  /* ── chart renderer ── */
+  function renderLineChart({ el, labels, series, height=300, compact=false, metricKey, showAvg=false, fixedMin=null, fixedMax=null }) {
+    if (!el || !labels.length || !series.length) {
+      if (el) el.innerHTML = `<div style="padding:12px;font-size:11px;color:#3d4460;">데이터 없음</div>`;
+      return;
+    }
+    const W = compact ? 440 : 880;
+    const pad = compact
+      ? { top:14, right:14, bottom:26, left:34 }
+      : { top:22, right:22, bottom:38, left:44 };
+
+    const allVals = series.flatMap(s=>s.values).filter(v=>typeof v==="number");
+    const rawMin = Math.min(...allVals), rawMax = Math.max(...allVals);
+    const spread = rawMax - rawMin || 1;
+    const yMin = fixedMin ?? Math.max(0, Math.floor((rawMin - spread*.15)/5)*5);
+    const yMax = fixedMax ?? (Math.ceil((rawMax + spread*.15)/5)*5 || rawMax+1);
+
+    const pw = W - pad.left - pad.right;
+    const ph = height - pad.top - pad.bottom;
+    const xStep = labels.length > 1 ? pw / (labels.length-1) : pw;
+    const xf = i  => pad.left + xStep * i;
+    const yf = v  => pad.top + ((yMax-v)/(yMax-yMin||1)) * ph;
+    const yTicks = Array.from({length:5},(_,i)=>yMin+((yMax-yMin)/4)*i);
+    const avgs = series.map(s => avg(s.values));
+    const ptsBySeries = series.map(s => s.values.map((v,i)=>({x:xf(i),y:yf(v),value:v,label:labels[i]})));
+
+    function makePath(pts) { return pts.map((p,i)=>`${i?"L":"M"} ${p.x} ${p.y}`).join(" "); }
+    function makeArea(pts,base) {
+      if(!pts.length) return "";
+      return `M ${pts[0].x} ${base} L ${pts[0].x} ${pts[0].y} `
+        +pts.slice(1).map(p=>`L ${p.x} ${p.y}`).join(" ")
+        +` L ${pts[pts.length-1].x} ${base} Z`;
+    }
+
+    const seriesSVG = series.map((s,si) => {
+      const pts = ptsBySeries[si];
+      return `
+        <path class="area" d="${makeArea(pts, pad.top+ph)}" fill="${s.color}"></path>
+        <path class="line" d="${makePath(pts)}" stroke="${s.color}"></path>
+        ${pts.map(p=>`<circle class="point" cx="${p.x}" cy="${p.y}" r="${compact?3.5:4.5}" fill="${s.color}"></circle>`).join("")}
+      `;
+    }).join("");
+
+    el.style.position = "relative";
+    el.style.overflow  = "hidden";
+    el.innerHTML = `
+      <div class="chart-tooltip"></div>
+      <svg viewBox="0 0 ${W} ${height}" preserveAspectRatio="xMidYMid meet" role="img">
+        ${yTicks.map(tick=>{
+          const yy = yf(tick);
+          return `<line class="grid-line" x1="${pad.left}" x2="${W-pad.right}" y1="${yy}" y2="${yy}"></line>
+                  <text class="axis-text" x="${pad.left-8}" y="${yy+4}" text-anchor="end">${Math.round(tick)}</text>`;
+        }).join("")}
+        ${showAvg ? avgs.map(a=>`<line class="avg-line" x1="${pad.left}" x2="${W-pad.right}" y1="${yf(a)}" y2="${yf(a)}"></line>`).join("") : ""}
+        ${seriesSVG}
+        <line class="hover-line" x1="${pad.left}" x2="${pad.left}" y1="${pad.top}" y2="${pad.top+ph}" visibility="hidden"></line>
+        ${series.map(()=>`<circle class="hover-marker" cx="0" cy="0" r="${compact?3.5:4.5}" visibility="hidden"></circle>`).join("")}
+        ${labels.map((lbl,i)=>{
+          if (!compact && labels.length>9 && i%2===1) return "";
+          return `<text class="axis-text" x="${xf(i)}" y="${height-10}" text-anchor="middle">${lbl}</text>`;
+        }).join("")}
+      </svg>
+    `;
+
+    const svg = el.querySelector("svg");
+    const tt  = el.querySelector(".chart-tooltip");
+    const hl  = el.querySelector(".hover-line");
+    const hm  = Array.from(el.querySelectorAll(".hover-marker"));
+
+    svg.addEventListener("mouseleave", () => {
+      tt.classList.remove("visible");
+      hl.setAttribute("visibility","hidden");
+      hm.forEach(m=>m.setAttribute("visibility","hidden"));
+    });
+    svg.addEventListener("mousemove", e => {
+      const rect = svg.getBoundingClientRect();
+      const relX = ((e.clientX-rect.left)/rect.width) * W;
+      const idx  = Math.max(0, Math.min(labels.length-1, Math.round((relX-pad.left)/xStep)));
+      const px   = xf(idx);
+
+      const rows = series.map((s,si) => {
+        const pt = ptsBySeries[si][idx];
+        hm[si].setAttribute("cx", pt.x);
+        hm[si].setAttribute("cy", pt.y);
+        hm[si].setAttribute("fill", s.color);
+        hm[si].setAttribute("visibility","visible");
+        return `
+          <div class="tt-row">
+            <span class="tt-name"><span class="tt-swatch" style="background:${s.color}"></span>${s.name}</span>
+            <strong>${fmt(s.metricKey||metricKey, pt.value)}</strong>
+          </div>
+          <div class="tt-row">
+            <span class="tt-name">평균</span>
+            <strong>${fmt(s.metricKey||metricKey, avgs[si])}</strong>
+          </div>
+        `;
+      }).join("");
+
+      hl.setAttribute("x1",px); hl.setAttribute("x2",px);
+      hl.setAttribute("visibility","visible");
+      tt.innerHTML = `<div class="tt-title">${labels[idx]}</div>${rows}`;
+      tt.classList.add("visible");
+
+      const tw = tt.offsetWidth||160, th2 = tt.offsetHeight||80;
+      const px2 = e.clientX-rect.left, py = e.clientY-rect.top;
+      tt.style.left = `${Math.min(Math.max(8,px2+14), rect.width-tw-8)}px`;
+      tt.style.top  = `${Math.min(Math.max(8,py-th2-14), rect.height-th2-8)}px`;
+    });
+  }
+
+  /* ── Vue App ── */
+  createApp({
+    data() {
+      return {
+        loading: false,
+        statusMessage: "로컬 프록시 상태를 확인하는 중입니다.",
+        statusTone: "",
+        sourceTitle: "Notion source",
+        filterText: "",
+        selectedMetric: "정답률",
+        metricDefinitions,
+        trendRows: [],
+        subjects: [],
+        metricRefs: {},
+        subjectRefs: {},
+        rightTab: "metrics",
+        palette,
+      };
+    },
+    computed: {
+      selectedMetricLabel() { return metricMap[this.selectedMetric]?.label || this.selectedMetric; },
+      selectableMetrics()   { return this.metricDefinitions.filter(m=>selectableMetricKeys.includes(m.key)); },
+      lastRow()             { return this.trendRows[this.trendRows.length-1] || null; },
+      summaryStats() {
+        const sc  = this.trendRows.map(r=>r.점수).filter(v=>typeof v==="number");
+        const ac  = this.trendRows.map(r=>r.정답률).filter(v=>typeof v==="number");
+        return [
+          { label:"모의고사 수",  value:`${this.trendRows.length}` },
+          { label:"평균 점수",    value: sc.length ? `${Math.round(avg(sc))}` : "-" },
+          { label:"최고 정답률",  value: ac.length ? `${Math.round(Math.max(...ac))}%` : "-" },
+          { label:"과목 수",      value:`${this.subjects.length}` }
+        ];
+      },
+      insightText() {
+        const vals = this.trendRows.map(r=>r[this.selectedMetric]).filter(v=>typeof v==="number");
+        if (!vals.length) return "선택한 지표 데이터가 없습니다.";
+        const d = delta(vals);
+        const dir = d>0?"상승":d<0?"하락":"정체";
+        return `${this.selectedMetric}는 시작 대비 ${dir} 흐름이며 변화 폭은 ${fmt(this.selectedMetric, Math.abs(d))}입니다.`;
+      },
+      mainLegend() {
+        const sel  = metricMap[this.selectedMetric];
+        const cmp  = this.selectedMetric==="점수" ? metricMap["정답률"] : metricMap["점수"];
+        return [
+          { name:sel.label, color:sel.color },
+          { name:cmp.label, color:cmp.color }
+        ];
+      }
+    },
+    methods: {
+      formatMetricValue: fmt,
+      setMetricRef(key) { return el => { if (el) this.metricRefs[key] = el; }; },
+      setSubjectRef(s)  { return el => { if (el) this.subjectRefs[s]  = el; }; },
+
+      switchTab(tab) {
+        this.rightTab = tab;
+        nextTick(() => this.renderMiniCharts());
+      },
+
+      async bootstrapConfig() {
+        try {
+          const cfg = await proxyFetch("/api/config");
+          this.filterText   = cfg.filterText || "";
+          this.statusMessage = cfg.hasToken && cfg.hasDatabaseId
+            ? (cfg.hasCache ? "서버 설정과 캐시 파일을 읽었습니다." : "서버 설정을 읽었습니다. 아직 캐시 파일은 없습니다.")
+            : "`.env`에 NOTION_ACCESS_TOKEN 또는 NOTION_DATABASE_ID가 없습니다.";
+          this.statusTone = cfg.hasToken && cfg.hasDatabaseId ? "ok" : "warn";
+          if (cfg.hasCache) await this.loadFromCache();
+        } catch {
+          this.statusMessage = "로컬 프록시 서버에 연결하지 못했습니다. `node backend/notion_proxy_server.js`를 실행해 주세요.";
+          this.statusTone = "error";
+        }
+      },
+
+      async loadFromCache() {
+        try {
+          const res = await fetchCache();
+          const rows = (res.pages||[]).map(parsePage);
+          this.sourceTitle = res.sourceTitle || res.databaseTitle || "Notion source";
+          this.filterText  = res.filterText || this.filterText;
+          this.trendRows   = toTrendRows(rows);
+          const disc = Array.from(new Set(this.trendRows.flatMap(r=>Object.keys(r.subjects||{}))));
+          this.subjects = [
+            ...subjectOrder.filter(s=>disc.includes(s)),
+            ...disc.filter(s=>!subjectOrder.includes(s))
+          ];
+          this.statusMessage = `${this.sourceTitle} 캐시에서 ${this.trendRows.length}개를 읽었습니다.`;
+          this.statusTone = "ok";
+          await nextTick();
+          this.renderCharts();
+        } catch (e) {
+          console.error(e);
+          this.trendRows = []; this.subjects = [];
+          this.statusMessage = `캐시 읽기 실패: ${e.message}`;
+          this.statusTone = "error";
+        }
+      },
+
+      async refreshData() {
+        this.loading = true;
+        this.statusMessage = "노션 API 캐시를 갱신하는 중입니다...";
+        this.statusTone = "";
+        try {
+          await proxyFetch("/api/refresh", { method:"POST" });
+          await this.loadFromCache();
+          this.statusMessage = `${this.sourceTitle} 캐시 갱신 완료 — ${this.trendRows.length}개`;
+          this.statusTone = "ok";
+        } catch (e) {
+          this.statusMessage = `갱신 실패: ${e.message}`;
+          this.statusTone = "error";
+        } finally {
+          this.loading = false;
+        }
+      },
+
+      renderCharts() {
+        if (!this.trendRows.length) return;
+        const labels = this.trendRows.map(r=>r.xLabel);
+        const sel    = metricMap[this.selectedMetric];
+        const cmp    = this.selectedMetric==="점수" ? metricMap["정답률"] : metricMap["점수"];
+
+        // 메인 차트 — 박스 높이에 맞게 SVG viewBox 활용
+        renderLineChart({
+          el: this.$refs.mainChart,
+          labels,
+          metricKey: this.selectedMetric,
+          series: [
+            { name:sel.label, values:this.trendRows.map(r=>r[sel.key]??0), color:sel.color, metricKey:sel.key },
+            { name:cmp.label, values:this.trendRows.map(r=>r[cmp.key]??0), color:cmp.color, metricKey:cmp.key }
+          ],
+          height: 340
+        });
+
+        this.renderMiniCharts();
+      },
+
+      renderMiniCharts() {
+        if (!this.trendRows.length) return;
+        const labels = this.trendRows.map(r=>r.xLabel);
+
+        this.metricDefinitions.forEach(m => {
+          renderLineChart({
+            el: this.metricRefs[m.key],
+            labels, metricKey: m.key,
+            series: [{ name:m.label, values:this.trendRows.map(r=>r[m.key]??0), color:m.color, metricKey:m.key }],
+            height: 120, compact: true, showAvg: true
+          });
+        });
+
+        this.subjects.forEach((subj, idx) => {
+          renderLineChart({
+            el: this.subjectRefs[subj],
+            labels, metricKey: "점수",
+            series: [{ name:subj, values:this.trendRows.map(r=>r.subjects?.[subj]?.["점수"]??0), color:palette[idx%palette.length], metricKey:"점수" }],
+            height: 120, compact: true, showAvg: true, fixedMin:0, fixedMax:20
+          });
+        });
+      }
+    },
+    watch: {
+      selectedMetric() { nextTick(()=>this.renderCharts()); }
+    },
+    mounted() { this.bootstrapConfig(); }
+  }).mount("#app");
+</script>
+</body>
+</html>
